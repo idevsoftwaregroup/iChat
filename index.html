@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>2iChat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+<div class="w-full max-w-md bg-white rounded shadow p-4 flex flex-col h-[500px]">
+
+    <!-- Username input -->
+    <div class="flex mb-2">
+        <input
+                class="flex-1 border rounded px-2 py-1"
+                id="user"
+                placeholder="Username"
+        />
+        <button
+                class="ml-2 bg-blue-500 text-white px-4 py-1 rounded"
+                onclick="connect()"
+        >
+            Connect
+        </button>
+    </div>
+
+    <!-- Chat messages -->
+    <div
+            class="flex-1 overflow-y-auto border rounded p-2 mb-2 flex flex-col"
+            id="chat"
+    ></div>
+
+    <!-- Message input -->
+    <div class="flex">
+        <input
+                class="flex-1 border rounded px-2 py-1"
+                id="msg"
+                placeholder="Type a message..."
+        />
+        <button
+                class="ml-2 bg-green-500 text-white px-4 py-1 rounded"
+                onclick="send()"
+        >
+            Send
+        </button>
+    </div>
+
+</div>
+
+<script>
+    let ws;
+    let username;
+
+    // -----------------------------
+    // Connect to WebSocket
+    // -----------------------------
+    function connect() {
+        username = document.getElementById("user").value.trim();
+
+        if (!username) {
+            alert("Enter username first");
+            return;
+        }
+
+        ws = new WebSocket(
+            "ws://localhost:8080/ws?username=" +
+            encodeURIComponent(username)
+        );
+
+        ws.onopen = () => {
+            logSystem("✅ Connected as " + username);
+
+            // Load history only once per browser session
+            if (!sessionStorage.getItem("historyLoaded")) {
+                loadHistory();
+                sessionStorage.setItem("historyLoaded", "true");
+            }
+        };
+
+        ws.onmessage = (e) => addMessage(e.data);
+
+        ws.onclose = () => {
+            logSystem("❌ Disconnected. Reconnecting...");
+            setTimeout(connect, 2000);
+        };
+
+        ws.onerror = (err) => console.error("WebSocket error:", err);
+    }
+
+    // -----------------------------
+    // Load old messages
+    // -----------------------------
+    async function loadHistory() {
+        const res = await fetch(
+            "/history?username=" + encodeURIComponent(username)
+        );
+
+        const data = await res.json();
+
+        data.forEach((msg) => {
+            addMessage(msg.username + ": " + msg.content, true);
+        });
+    }
+
+    // -----------------------------
+    // Send message
+    // -----------------------------
+    function send() {
+        const input = document.getElementById("msg");
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const msg = input.value.trim();
+        if (!msg) return;
+
+        ws.send(msg);
+        addMessage(username + ": " + msg, true);
+        input.value = "";
+    }
+
+    // -----------------------------
+    // Add message to chat
+    // -----------------------------
+    function addMessage(msg, my = false) {
+        const chat = document.getElementById("chat");
+        const div = document.createElement("div");
+
+        const isMine = my || msg.startsWith(username + ":");
+
+        div.className = `
+            mb-2 p-2 rounded max-w-[70%] break-words
+            ${isMine
+            ? "bg-blue-500 text-white self-end"
+            : "bg-gray-300 text-black self-start"}
+        `;
+
+        div.textContent = msg.replace(username + ": ", "");
+        div.style.alignSelf = isMine ? "flex-end" : "flex-start";
+
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    // -----------------------------
+    // System messages
+    // -----------------------------
+    function logSystem(msg) {
+        const chat = document.getElementById("chat");
+        const div = document.createElement("div");
+
+        div.className = "text-center text-gray-500 text-sm my-1";
+        div.textContent = msg;
+
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    // -----------------------------
+    // Enter key sends message
+    // -----------------------------
+    document.getElementById("msg").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            send();
+        }
+    });
+</script>
+
+</body>
+</html>
